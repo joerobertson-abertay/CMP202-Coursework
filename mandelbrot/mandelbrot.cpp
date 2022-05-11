@@ -1,8 +1,6 @@
 // Mandelbrot set example
 // Adam Sampson <a.sampson@abertay.ac.uk>
 
-//#include <gl/GL.h>
-//#include <gl/GLU.h>
 
 #include <chrono>
 #include <cstdint>
@@ -10,7 +8,7 @@
 #include <complex>
 #include <fstream>
 #include <iostream>
-#include "amp.h"
+#include <vector>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -19,6 +17,7 @@ using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 using std::complex;
 using std::cout;
+using std::cin;
 using std::endl;
 using std::ofstream;
 using std::thread;
@@ -49,6 +48,7 @@ uint32_t image[HEIGHT][WIDTH];
 void write_tga(const char *filename)
 {
 	std::unique_lock<mutex> tgaLock(tgaMutex);
+
 	cv.wait(tgaLock, []() {return tgaRender; });
 	ofstream outfile(filename, ofstream::binary);
 
@@ -135,14 +135,6 @@ void compute_mandelbrot(double left, double right, double top, double bottom, in
 	}
 }
 
-void tgaFunc()
-{
-	thread tgaThread(write_tga, "output.tga");
-	tgaRender = true;
-	tgaThread.join();
-	cv.notify_one();
-}
-
 void mandelbrot_whatever()
 {
 	//locks for variables, just in case
@@ -154,16 +146,16 @@ void mandelbrot_whatever()
 	compute_mandelbrot(-2.0, 1.0, 1.0, -1.0, sliceStart, sliceEnd);
 }
 
-int main(int argc, char* argv[])
+void compute_all()
 {
+	int threadCount;
+	cout << "How many threads should be created?" << "\n";
+	cin >> threadCount;
 	cout << "Please wait..." << endl;
 
 	// Start timing
 	the_clock::time_point start = the_clock::now();
-
 	std::vector<thread> threadVector;
-	//const int threadCount = thread::hardware_concurrency();
-	const int threadCount = 8; //this controls the number of threads
 	// This shows the whole set.
 	for (int i = 0; i < 16; i += threadCount) //16 strips
 	{
@@ -179,8 +171,6 @@ int main(int argc, char* argv[])
 		threadVector.clear(); //empties vector
 	}
 
-	// This zooms in on an interesting bit of detail.
-	//compute_mandelbrot(-0.751085, -0.734975, 0.118378, 0.134488);
 
 	// Stop timing
 	the_clock::time_point end = the_clock::now();
@@ -188,7 +178,19 @@ int main(int argc, char* argv[])
 	// Compute the difference between the two times in milliseconds
 	auto time_taken = duration_cast<milliseconds>(end - start).count();
 	cout << "Computing the Mandelbrot set took " << time_taken << " ms." << endl;
-	
-	tgaFunc();
+
+	//notify the tga thread
+	tgaRender = true;
+	cv.notify_one();
+
+}
+
+int main(int argc, char* argv[])
+{
+	thread t1(compute_all);
+	thread t2(write_tga, "output.tga");
+
+	t2.join();
+	t1.join();
 	return 0;
 }
